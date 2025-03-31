@@ -9,6 +9,7 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # Для утренней рассылки
+from openpyxl import Workbook  # <-- Add this import
 
 from database import init_db, get_session, User, DailyLog
 
@@ -220,6 +221,63 @@ async def cmd_gather_data_backdated(message: types.Message):
         "Выберите дату, за которую хотите внести данные:",
         reply_markup=keyboard
     )
+
+
+@dp.message_handler(commands=["export_excel"])
+async def export_excel_cmd(message: types.Message):
+    user_id = message.from_user.id
+    session = get_session()
+
+    try:
+        # Берём все логи пользователя (или измените фильтр по датам, если нужно)
+        logs = session.query(DailyLog).filter(DailyLog.user_id == user_id).all()
+    finally:
+        session.close()
+
+    if not logs:
+        await message.answer("У вас нет данных для экспорта.")
+        return
+
+    # Создаём Excel-книгу
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Habit Logs"
+
+    # Добавим строку заголовков (пример)
+    ws.append([
+        "ID",
+        "Дата",
+        "Лёг до 00:00",
+        "Не использовал гаджеты после 23:00",
+        "Питался по рациону",
+        "Часы спорта",
+        "Дата записи (UTC)"
+    ])
+
+    # Заполняем строки из БД
+    for log in logs:
+        ws.append([
+            log.id,
+            log.date_of_entry.strftime("%Y-%m-%d"),
+            "Да" if log.bedtime_before_midnight else "Нет",
+            "Да" if log.no_gadgets_after_23 else "Нет",
+            "Да" if log.followed_diet else "Нет",
+            str(log.sport_hours),
+            log.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        ])
+
+    # Сохраняем во временный файл
+    filename = f"export_{user_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    wb.save(filename)
+
+    # Отправляем файл
+    await message.answer_document(
+        document=types.InputFile(filename),
+        caption="Вот ваши данные в Excel!"
+    )
+
+    # Удаляем временный файл
+    os.remove(filename)
 
 # -------------------------------------------------------------------
 # Хэндлер нажатия инлайн-кнопки (выбор даты)
