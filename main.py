@@ -1,6 +1,8 @@
 import logging
 import datetime
 from datetime import timedelta
+from dotenv import load_dotenv
+import os
 
 from aiogram import Bot, Dispatcher, types, executor
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove
@@ -13,12 +15,14 @@ from openpyxl import Workbook  # <-- Add this import
 
 from database import init_db, get_session, User, DailyLog
 
-import os
-
 # -------------------------------------------------------------------
 # Настройки
 # -------------------------------------------------------------------
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "<BOT_TOKEN_HERE>")
+load_dotenv()  # Load environment variables from .env file
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+if not TELEGRAM_BOT_TOKEN:
+    raise ValueError("TELEGRAM_BOT_TOKEN environment variable is not set")
+
 logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
@@ -111,9 +115,9 @@ async def process_bedtime_today(message: types.Message, state: FSMContext):
         bedtime_before_midnight = (text == "да")
         await state.update_data(bedtime_before_midnight=bedtime_before_midnight)
         await GatherDataState.next()
-        await message.answer(
-            "Использовали ли вы гаджеты после 23:00? (да/нет)",
-            reply_markup=yes_no_kb
+        await message.reply(
+            "Использовали ли вы вчера гаджеты после 23:00? (да/нет)",
+            reply_markup=ReplyKeyboardRemove(),
         )
     else:
         await message.answer("Пожалуйста, выберите «да» или «нет».", reply_markup=yes_no_kb)
@@ -129,9 +133,9 @@ async def process_no_gadgets_today(message: types.Message, state: FSMContext):
         no_gadgets_after_23 = not gadgets_after_23
         await state.update_data(no_gadgets_after_23=no_gadgets_after_23)
         await GatherDataState.next()
-        await message.answer(
-            "Питались ли вы по рациону? (да/нет)",
-            reply_markup=yes_no_kb
+        await message.reply(
+            "Питались ли вы вчера по рациону? (да/нет)",
+            reply_markup=ReplyKeyboardRemove(),
         )
     else:
         await message.answer("Пожалуйста, выберите «да» или «нет».", reply_markup=yes_no_kb)
@@ -146,10 +150,9 @@ async def process_followed_diet_today(message: types.Message, state: FSMContext)
         followed_diet = (text == "да")
         await state.update_data(followed_diet=followed_diet)
         await GatherDataState.next()
-        # Спорт лучше вводить руками, без кнопок:
-        await message.answer(
-            "Сколько часов занялись спортом? (введите число, например 1.5)",
-            reply_markup=ReplyKeyboardRemove()
+        await message.reply(
+            "Сколько часов вы вчера занимались спортом? (введите число)",
+            reply_markup=ReplyKeyboardRemove(),
         )
     else:
         await message.answer("Пожалуйста, выберите «да» или «нет».", reply_markup=yes_no_kb)
@@ -168,21 +171,24 @@ async def process_sport_hours_today(message: types.Message, state: FSMContext):
     
     await state.update_data(sport_hours=sport_hours)
     data = await state.get_data()
-    await state.finish()
-
-    # Сохраняем данные в БД (за сегодня)
     session = get_session()
     try:
-        log_entry = DailyLog(
+        yesterday = datetime.date.today() - timedelta(days=1) # Calculate yesterday's date
+        new_log = DailyLog(
             user_id=message.from_user.id,
-            date_of_entry=datetime.date.today(),
+            username=message.from_user.username,
             bedtime_before_midnight=data["bedtime_before_midnight"],
             no_gadgets_after_23=data["no_gadgets_after_23"],
             followed_diet=data["followed_diet"],
-            sport_hours=data["sport_hours"]
+            sport_hours=data["sport_hours"],
+            date_of_entry=yesterday, # Use yesterday's date
         )
-        session.add(log_entry)
+        session.add(new_log)
         session.commit()
+        await message.reply(
+            f"Данные за {yesterday.strftime('%Y-%m-%d')} успешно сохранены! Спасибо!",
+            reply_markup=ReplyKeyboardRemove(),
+        )
     except Exception as e:
         session.rollback()
         logging.error(f"Ошибка сохранения в БД: {e}")
@@ -190,8 +196,7 @@ async def process_sport_hours_today(message: types.Message, state: FSMContext):
         return
     finally:
         session.close()
-
-    await message.answer("Данные за СЕГОДНЯ успешно сохранены! Спасибо за ответы.")
+    await state.finish()
 
 # -------------------------------------------------------------------
 # Новая команда: /gather_data_backdated (задним числом)
