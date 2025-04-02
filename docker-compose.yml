@@ -19,8 +19,7 @@ services:
     depends_on:
       - db
     environment:
-      - TELEGRAM_BOT_TOKEN=7077048864:AAEXg1Pd1JBuMClBY5zO3lIMJirRjJ0qA_0
-      #- TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+#      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - DB_HOST=db
       - DB_PORT=5432
       - DB_NAME=mydb

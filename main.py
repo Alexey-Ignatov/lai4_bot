@@ -20,6 +20,7 @@ from database import init_db, get_session, User, DailyLog
 # -------------------------------------------------------------------
 load_dotenv()  # Load environment variables from .env file
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+print("TELEGRAM_BOT_TOKEN",TELEGRAM_BOT_TOKEN)
 if not TELEGRAM_BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN environment variable is not set")
 
